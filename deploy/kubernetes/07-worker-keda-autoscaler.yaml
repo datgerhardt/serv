@@ -1,0 +1,47 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: llm-worker-scaler
+  namespace: llm-serving
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: llm-worker
+  pollingInterval: 5
+  cooldownPeriod: 60
+  minReplicaCount: 2
+  maxReplicaCount: 16
+  fallback:
+    failureThreshold: 3
+    replicas: 4
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - type: Pods
+              value: 2
+              periodSeconds: 15
+        scaleDown:
+          stabilizationWindowSeconds: 180
+          policies:
+            - type: Percent
+              value: 25
+              periodSeconds: 60
+  triggers:
+    # Trigger 1: Scale out on Batch Queue Backlog
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-k8s.monitoring.svc.cluster.local:9090
+        metricName: llm_queue_depth
+        query: sum(llm_queue_depth)
+        threshold: "8"
+    # Trigger 2: Scale out on Active Inferences / Tensor Core Saturation
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-k8s.monitoring.svc.cluster.local:9090
+        metricName: llm_active_inferences
+        query: sum(llm_active_inferences)
+        threshold: "12"

@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-worker
+  namespace: llm-serving
+  labels:
+    app: llm-worker
+    tier: inference-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: llm-worker
+  template:
+    metadata:
+      labels:
+        app: llm-worker
+        tier: inference-worker
+    spec:
+      # Accelerator node targeting (e.g. GPU A10G / L4 / A100 or high-performance compute)
+      nodeSelector:
+        node.kubernetes.io/instance-type: "g5.xlarge"
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+      containers:
+        - name: inference-worker
+          # In production, this can be vLLM: vllm/vllm-openai:latest
+          # with args: ["--model", "meta-llama/Llama-3-8B-Instruct-AWQ", "--quantization", "awq", "--max-model-len", "8192"]
+          image: ghcr.io/organization/llm-worker:v1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: WORKER_PORT
+              value: "8000"
+            - name: MODEL_NAME
+              value: "meta-llama/Llama-3-8B-Instruct-AWQ"
+            - name: QUANTIZATION_TYPE
+              value: "AWQ-4bit"
+          resources:
+            requests:
+              cpu: "4000m"
+              memory: "16Gi"
+              # nvidia.com/gpu: "1"
+            limits:
+              cpu: "8000m"
+              memory: "32Gi"
+              # nvidia.com/gpu: "1"
+          volumeMounts:
+            - mountPath: /dev/shm
+              name: dshm
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 3
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Gi

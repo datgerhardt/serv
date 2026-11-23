@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: llm-gateway-canary-slo
+  namespace: llm-serving
+spec:
+  metrics:
+    # SLO 1: Error Rate must remain under 1%
+    - name: success-rate
+      interval: 30s
+      successCondition: result[0] <= 0.01
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus-k8s.monitoring.svc.cluster.local:9090
+          query: |
+            (
+              sum(rate(llm_http_requests_total{tier="api-gateway", status=~"5.."}[2m]))
+              /
+              sum(rate(llm_http_requests_total{tier="api-gateway"}[2m]))
+            ) OR on() vector(0)
+
+    # SLO 2: p99 latency must not exceed 1.5 seconds
+    - name: p99-latency
+      interval: 30s
+      successCondition: result[0] <= 1.5
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus-k8s.monitoring.svc.cluster.local:9090
+          query: |
+            histogram_quantile(
+              0.99,
+              sum(rate(llm_http_request_duration_seconds_bucket{path="/v1/chat/completions"}[2m])) by (le)
+            ) OR on() vector(0.05)

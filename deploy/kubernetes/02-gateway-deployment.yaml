@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-gateway
+  namespace: llm-serving
+  labels:
+    app: llm-gateway
+    tier: api-gateway
+spec:
+  replicas: 3
+  revisionHistoryLimit: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: llm-gateway
+  template:
+    metadata:
+      labels:
+        app: llm-gateway
+        tier: api-gateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - llm-gateway
+                topologyKey: "kubernetes.io/hostname"
+      containers:
+        - name: gateway
+          image: ghcr.io/organization/llm-gateway:v1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: llm-gateway-config
+            - secretRef:
+                name: llm-secrets
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: llm-gateway-pdb
+  namespace: llm-serving
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: llm-gateway
