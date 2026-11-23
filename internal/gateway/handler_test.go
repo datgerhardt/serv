@@ -2,6 +2,8 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -173,5 +175,83 @@ func TestServer_RateLimiting(t *testing.T) {
 
 	if rr4.Code != http.StatusOK {
 		t.Fatalf("Expected different IP to be allowed with 200, got %d", rr4.Code)
+	}
+}
+
+func TestServer_StreamingChatThroughMiddleware(t *testing.T) {
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher := w.(http.Flusher)
+
+		for _, tok := range []string{"Hello", " ", "stream"} {
+			chunk := models.ChatCompletionStreamResponse{
+				ID:    "chunk-1",
+				Model: "model-test",
+				Choices: []models.ChatCompletionStreamChoice{
+					{Index: 0, Delta: models.ChatMessage{Content: tok}},
+				},
+			}
+			b, _ := json.Marshal(chunk)
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", string(b))
+			flusher.Flush()
+		}
+		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+		flusher.Flush()
+	}))
+	defer mockBackend.Close()
+
+	audit := storage.NewAsyncAuditWriter(nil, 10, 5, time.Second)
+	defer audit.Stop()
+
+	client := backend.NewClient(mockBackend.URL, 5*time.Second)
+	b := batcher.NewDynamicBatcher(client, 2, time.Second, 10, 1, "model-test")
+	defer b.Stop()
+
+	h := NewHandler(b, &mockCache{}, audit, client, "model-test", "AWQ-4bit")
+	srv := NewServer("0", h, &ratelimit.NoopLimiter{}, audit)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/chat/completions",
+		strings.NewReader(`{"model":"model-test","messages":[{"role":"user","content":"Hi"}],"stream":true}`),
+	)
+	rr := httptest.NewRecorder()
+	srv.httpServer.Handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("Expected status 200 for streaming through Server middleware, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if !rr.Flushed {
+		t.Errorf("Expected ResponseRecorder to be flushed during SSE stream")
+	}
+	if ct := rr.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("Expected Content-Type text/event-stream, got %q", ct)
+	}
+	if reqID := rr.Header().Get(RequestIDHeader); reqID == "" {
+		t.Errorf("Expected generated %s response header", RequestIDHeader)
+	} else if req.Header.Get(RequestIDHeader) != reqID {
+		t.Errorf("Expected generated %s to be propagated to request headers", RequestIDHeader)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, `"content":"stream"`) || !strings.Contains(body, "data: [DONE]") {
+		t.Errorf("Unexpected SSE stream body: %s", body)
+	}
+}
+
+func TestHandler_RequestBodyLimit(t *testing.T) {
+	h := NewHandler(nil, &mockCache{}, nil, nil, "model-test", "AWQ-4bit")
+
+	oversized := strings.Repeat("a", maxRequestBodyBytes+1024)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(oversized))
+	rr := httptest.NewRecorder()
+
+	h.HandleChatCompletions(rr, req)
+
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("Expected status 413 for oversized body, got %d", rr.Code)
 	}
 }

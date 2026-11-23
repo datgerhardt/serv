@@ -167,3 +167,79 @@ func TestDynamicBatcher_TimeoutFlush(t *testing.T) {
 		t.Errorf("Timeout flush took too long: %v", elapsed)
 	}
 }
+
+func TestDynamicBatcher_PartitionsMixedModelsAndParams(t *testing.T) {
+	var mu sync.Mutex
+	seenModels := make(map[string]int)
+	seenTemps := make(map[float64]int)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var batchReq backend.BatchInferenceRequest
+		if err := json.NewDecoder(r.Body).Decode(&batchReq); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		mu.Lock()
+		seenModels[batchReq.Model]++
+		seenTemps[batchReq.Temperature]++
+		mu.Unlock()
+
+		results := make([]backend.BatchInferenceItemResponse, len(batchReq.Items))
+		for i, item := range batchReq.Items {
+			results[i] = backend.BatchInferenceItemResponse{
+				ID: item.ID,
+				Choice: models.ChatChoice{
+					Index: 0,
+					Message: models.ChatMessage{
+						Role:    "assistant",
+						Content: fmt.Sprintf("model=%s temp=%.1f", batchReq.Model, batchReq.Temperature),
+					},
+					FinishReason: "stop",
+				},
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(backend.BatchInferenceResponse{
+			Model:   batchReq.Model,
+			Results: results,
+		})
+	}))
+	defer server.Close()
+
+	client := backend.NewClient(server.URL, 5*time.Second)
+	b := NewDynamicBatcher(client, 4, 50*time.Millisecond, 100, 4, "default-model")
+	defer b.Stop()
+
+	reqs := []*models.ChatCompletionRequest{
+		{Model: "model-a", Temperature: 0.2, Messages: []models.ChatMessage{{Role: "user", Content: "p1"}}},
+		{Model: "model-b", Temperature: 0.9, Messages: []models.ChatMessage{{Role: "user", Content: "p2"}}},
+	}
+
+	var wg sync.WaitGroup
+	resps := make([]*models.ChatCompletionResponse, len(reqs))
+	errs := make([]error, len(reqs))
+
+	for i, req := range reqs {
+		wg.Add(1)
+		go func(idx int, r *models.ChatCompletionRequest) {
+			defer wg.Done()
+			resps[idx], errs[idx] = b.Submit(context.Background(), r)
+		}(i, req)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("Request %d failed: %v", i, err)
+		}
+	}
+
+	if resps[0].Model != "model-a" || resps[0].Choices[0].Message.Content != "model=model-a temp=0.2" {
+		t.Errorf("Request 0 got wrong model/params: model=%q content=%q", resps[0].Model, resps[0].Choices[0].Message.Content)
+	}
+	if resps[1].Model != "model-b" || resps[1].Choices[0].Message.Content != "model=model-b temp=0.9" {
+		t.Errorf("Request 1 got wrong model/params: model=%q content=%q", resps[1].Model, resps[1].Choices[0].Message.Content)
+	}
+}

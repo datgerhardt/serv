@@ -12,7 +12,7 @@ import urllib.request
 
 GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:8080")
 STREAM_ENDPOINT = f"{GATEWAY_URL}/v1/chat/completions"
-MODEL_NAME = os.getenv("MODEL_NAME", "/Users/gh/models/llama3.2.gguf")
+MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-3-8B-Instruct-AWQ")
 
 def test_stream():
     payload = {

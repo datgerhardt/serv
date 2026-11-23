@@ -17,7 +17,8 @@ import (
 	"serv/internal/storage"
 )
 
-// responseWriterInterceptor captures HTTP status code for metrics and logging.
+// responseWriterInterceptor captures HTTP status code for metrics and logging
+// while preserving http.Flusher support for SSE streaming.
 type responseWriterInterceptor struct {
 	http.ResponseWriter
 	statusCode int
@@ -26,6 +27,18 @@ type responseWriterInterceptor struct {
 func (w *responseWriterInterceptor) WriteHeader(code int) {
 	w.statusCode = code
 	w.ResponseWriter.WriteHeader(code)
+}
+
+// Flush forwards flushing to the underlying ResponseWriter when supported (required for SSE).
+func (w *responseWriterInterceptor) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// Unwrap exposes the underlying ResponseWriter to http.ResponseController.
+func (w *responseWriterInterceptor) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }
 
 // RequestIDHeader is the HTTP header for distributed tracing.
@@ -39,6 +52,7 @@ func MetricsMiddleware(next http.Handler) http.Handler {
 		reqID := r.Header.Get(RequestIDHeader)
 		if reqID == "" {
 			reqID = uuid.New().String()
+			r.Header.Set(RequestIDHeader, reqID)
 		}
 		w.Header().Set(RequestIDHeader, reqID)
 
@@ -103,7 +117,11 @@ func RateLimitMiddleware(limiter ratelimit.Limiter, auditWriter *storage.AsyncAu
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTooManyRequests)
 
-				metrics.RateLimitExceededTotal.WithLabelValues(clientKey).Inc()
+				identityType := "ip"
+				if strings.HasPrefix(clientKey, "key:") {
+					identityType = "api_key"
+				}
+				metrics.RateLimitExceededTotal.WithLabelValues(identityType).Inc()
 
 				if auditWriter != nil {
 					auditWriter.Enqueue(models.RequestMetadata{

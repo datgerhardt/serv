@@ -173,45 +173,81 @@ func (b *DynamicBatcher) batchLoop() {
 	}
 }
 
-// processBatch sends coalesced items to the quantized backend and fans out results.
-func (b *DynamicBatcher) processBatch(items []*BatchItem) {
-	start := time.Now()
-	batchSize := len(items)
-	metrics.BatchSize.Observe(float64(batchSize))
+type batchGroupKey struct {
+	model       string
+	temperature float64
+	topP        float64
+}
 
+// processBatch partitions coalesced items by compatible model/sampling parameters
+// and dispatches them to the quantized backend.
+func (b *DynamicBatcher) processBatch(items []*BatchItem) {
 	// Filter out items whose client context was cancelled while waiting for worker dispatch
-	validItems := make([]*BatchItem, 0, batchSize)
-	backendItems := make([]backend.BatchInferenceItem, 0, batchSize)
+	groups := make(map[batchGroupKey][]*BatchItem)
+	order := make([]batchGroupKey, 0, 1)
 
 	for _, item := range items {
-		if item.Context.Err() == nil {
-			validItems = append(validItems, item)
-			maxTokens := item.Request.MaxTokens
-			if maxTokens <= 0 {
-				maxTokens = 256
-			}
-			backendItems = append(backendItems, backend.BatchInferenceItem{
-				ID:        item.ID,
-				Messages:  item.Request.Messages,
-				MaxTokens: maxTokens,
-			})
+		if item.Context.Err() != nil {
+			continue
 		}
+		model := b.modelName
+		if item.Request.Model != "" {
+			model = item.Request.Model
+		}
+		key := batchGroupKey{
+			model:       model,
+			temperature: item.Request.Temperature,
+			topP:        item.Request.TopP,
+		}
+		if _, exists := groups[key]; !exists {
+			order = append(order, key)
+		}
+		groups[key] = append(groups[key], item)
 	}
 
-	if len(validItems) == 0 {
+	if len(order) == 0 {
 		return
 	}
 
-	model := b.modelName
-	if validItems[0].Request.Model != "" {
-		model = validItems[0].Request.Model
+	if len(order) == 1 {
+		k := order[0]
+		b.executeGroup(k, groups[k])
+		return
+	}
+
+	var wg sync.WaitGroup
+	for _, k := range order {
+		wg.Add(1)
+		go func(key batchGroupKey, grp []*BatchItem) {
+			defer wg.Done()
+			b.executeGroup(key, grp)
+		}(k, groups[k])
+	}
+	wg.Wait()
+}
+
+func (b *DynamicBatcher) executeGroup(key batchGroupKey, validItems []*BatchItem) {
+	start := time.Now()
+	metrics.BatchSize.Observe(float64(len(validItems)))
+
+	backendItems := make([]backend.BatchInferenceItem, 0, len(validItems))
+	for _, item := range validItems {
+		maxTokens := item.Request.MaxTokens
+		if maxTokens <= 0 {
+			maxTokens = 256
+		}
+		backendItems = append(backendItems, backend.BatchInferenceItem{
+			ID:        item.ID,
+			Messages:  item.Request.Messages,
+			MaxTokens: maxTokens,
+		})
 	}
 
 	batchReq := &backend.BatchInferenceRequest{
-		Model:       model,
+		Model:       key.model,
 		Items:       backendItems,
-		Temperature: validItems[0].Request.Temperature,
-		TopP:        validItems[0].Request.TopP,
+		Temperature: key.temperature,
+		TopP:        key.topP,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -264,7 +300,7 @@ func (b *DynamicBatcher) processBatch(items []*BatchItem) {
 			ID:                 res.ID,
 			Object:             "chat.completion",
 			Created:            now,
-			Model:              model,
+			Model:              key.model,
 			Choices:            []models.ChatChoice{res.Choice},
 			Usage:              res.Usage,
 			Cached:             false,

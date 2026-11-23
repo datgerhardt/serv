@@ -103,11 +103,11 @@ func (r *RedisLimiter) Close() error {
 
 // MemoryLimiter provides an in-memory token bucket / sliding window fallback.
 type MemoryLimiter struct {
-	mu         sync.Mutex
-	limits     map[string]*clientBucket
-	limit      int
-	window     time.Duration
-	stopClean  chan struct{}
+	mu        sync.Mutex
+	limits    map[string]*clientBucket
+	limit     int
+	window    time.Duration
+	stopClean chan struct{}
 }
 
 type clientBucket struct {

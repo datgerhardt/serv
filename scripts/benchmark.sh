@@ -13,7 +13,7 @@ echo "  High-Scale Quantized LLM Serving Benchmark"
 echo "  Target: ${GATEWAY_URL}"
 echo "=========================================================="
 
-MODEL_NAME="${MODEL_NAME:-/Users/gh/models/llama3.2.gguf}"
+MODEL_NAME="${MODEL_NAME:-meta-llama/Llama-3-8B-Instruct-AWQ}"
 
 # Check health
 echo -n "[1/4] Checking gateway health... "

@@ -110,6 +110,6 @@ var (
 			Name: "llm_rate_limit_exceeded_total",
 			Help: "Total number of HTTP requests rejected due to rate limit violation",
 		},
-		[]string{"client_id"},
+		[]string{"identity_type"},
 	)
 )

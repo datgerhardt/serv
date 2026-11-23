@@ -33,8 +33,8 @@ func TestClient_BatchFallbackToChatCompletions(t *testing.T) {
 
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(models.ChatCompletionResponse{
-				ID:      "chatcmpl-test",
-				Model:   req.Model,
+				ID:    "chatcmpl-test",
+				Model: req.Model,
 				Choices: []models.ChatChoice{
 					{
 						Index: 0,

@@ -5,12 +5,22 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
 	"serv/internal/models"
 )
+
+// redactDSN strips credentials from a PostgreSQL DSN before logging.
+func redactDSN(dsn string) string {
+	u, err := url.Parse(dsn)
+	if err != nil || u.Host == "" {
+		return "<redacted-dsn>"
+	}
+	return u.Redacted()
+}
 
 // PostgresStore manages persistent metadata and telemetry logs in PostgreSQL.
 type PostgresStore struct {
@@ -39,7 +49,7 @@ func NewPostgresStore(dsn string, maxConns int, enabled bool) (*PostgresStore, e
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		log.Printf("[Storage] Warning: PostgreSQL ping failed at %s: %v (will operate in degraded mode)", dsn, err)
+		log.Printf("[Storage] Warning: PostgreSQL ping failed at %s: %v (will operate in degraded mode)", redactDSN(dsn), err)
 		return &PostgresStore{db: db, enabled: false}, nil
 	}
 
@@ -97,7 +107,7 @@ func (s *PostgresStore) InsertBatch(ctx context.Context, records []models.Reques
 	for _, rec := range records {
 		valStrings = append(valStrings, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
 			argIdx, argIdx+1, argIdx+2, argIdx+3, argIdx+4, argIdx+5, argIdx+6, argIdx+7, argIdx+8, argIdx+9, argIdx+10, argIdx+11))
-		
+
 		valArgs = append(valArgs,
 			rec.RequestID,
 			rec.Model,

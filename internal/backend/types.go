@@ -21,11 +21,11 @@ type BatchInferenceRequest struct {
 
 // BatchInferenceItemResponse is the individual completion within a batch response.
 type BatchInferenceItemResponse struct {
-	ID               string             `json:"id"`
-	Choice           models.ChatChoice  `json:"choice"`
-	Usage            models.Usage       `json:"usage"`
-	TimeToFirstToken int64              `json:"ttft_ms"`
-	Error            string             `json:"error,omitempty"`
+	ID               string            `json:"id"`
+	Choice           models.ChatChoice `json:"choice"`
+	Usage            models.Usage      `json:"usage"`
+	TimeToFirstToken int64             `json:"ttft_ms"`
+	Error            string            `json:"error,omitempty"`
 }
 
 // BatchInferenceResponse returned by the quantized worker.

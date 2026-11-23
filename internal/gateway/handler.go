@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,6 +17,8 @@ import (
 	"serv/internal/models"
 	"serv/internal/storage"
 )
+
+const maxRequestBodyBytes = 16 << 20 // 16 MiB (matches ingress proxy-body-size)
 
 // Handler houses all HTTP endpoints for the LLM Gateway.
 type Handler struct {
@@ -52,8 +55,16 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	reqID := r.Header.Get(RequestIDHeader)
 	clientIP := r.RemoteAddr
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	defer r.Body.Close()
+
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, `{"error":{"message":"Request body exceeds maximum allowed size"}}`, http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, `{"error":{"message":"Failed to read request body"}}`, http.StatusBadRequest)
 		return
 	}
