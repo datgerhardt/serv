@@ -44,7 +44,7 @@ func (w *AsyncAuditWriter) Enqueue(rec models.RequestMetadata) {
 	case w.recordChan <- rec:
 	default:
 		// Queue full - drop or log to prevent memory exhaustion
-		log.Printf("[Storage] Audit buffer full! Dropping request log for %s", rec.RequestID)
+		log.Printf("Audit buffer full! Dropping request log for %s", rec.RequestID)
 	}
 }
 
@@ -68,7 +68,7 @@ func (w *AsyncAuditWriter) worker() {
 		defer cancel()
 
 		if err := w.store.InsertBatch(ctx, batch); err != nil {
-			log.Printf("[Storage] Async flush failed for %d records: %v", len(batch), err)
+			log.Printf("Async flush failed for %d records: %v", len(batch), err)
 		}
 		batch = make([]models.RequestMetadata, 0, w.batchSize)
 	}

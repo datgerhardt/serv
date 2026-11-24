@@ -214,8 +214,8 @@ func main() {
 		_, _ = w.Write([]byte(`{"status":"healthy"}`))
 	})
 
-	log.Printf("[Worker] Quantized LLM Worker running on :%s (Model: %s, Quant: %s)", port, modelName, quantType)
+	log.Printf("Quantized LLM Worker running on :%s (Model: %s, Quant: %s)", port, modelName, quantType)
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
-		log.Fatalf("[Worker] Failed to start worker: %v", err)
+		log.Fatalf("Failed to start worker: %v", err)
 	}
 }

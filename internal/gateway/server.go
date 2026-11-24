@@ -55,7 +55,7 @@ func NewServer(port string, h *Handler, limiter ratelimit.Limiter, auditWriter *
 
 // Start runs the HTTP server.
 func (s *Server) Start() error {
-	log.Printf("[Gateway] HTTP API Gateway listening on %s", s.httpServer.Addr)
+	log.Printf("HTTP API Gateway listening on %s", s.httpServer.Addr)
 	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("http server failure: %w", err)
 	}
@@ -64,6 +64,6 @@ func (s *Server) Start() error {
 
 // Shutdown initiates graceful termination.
 func (s *Server) Shutdown(ctx context.Context) error {
-	log.Println("[Gateway] Shutting down HTTP API Gateway...")
+	log.Println("Shutting down HTTP API Gateway...")
 	return s.httpServer.Shutdown(ctx)
 }

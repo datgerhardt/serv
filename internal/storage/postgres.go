@@ -31,13 +31,13 @@ type PostgresStore struct {
 // NewPostgresStore creates a connection pool and initializes tables.
 func NewPostgresStore(dsn string, maxConns int, enabled bool) (*PostgresStore, error) {
 	if !enabled {
-		log.Println("[Storage] PostgreSQL metadata and audit logging is disabled via configuration")
+		log.Println("PostgreSQL metadata and audit logging is disabled via configuration")
 		return &PostgresStore{enabled: false}, nil
 	}
 
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		log.Printf("[Storage] Error connecting to PostgreSQL: %v (falling back to no-op)", err)
+		log.Printf("Error connecting to PostgreSQL: %v (falling back to no-op)", err)
 		return &PostgresStore{enabled: false}, nil
 	}
 
@@ -49,7 +49,7 @@ func NewPostgresStore(dsn string, maxConns int, enabled bool) (*PostgresStore, e
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		log.Printf("[Storage] Warning: PostgreSQL ping failed at %s: %v (will operate in degraded mode)", redactDSN(dsn), err)
+		log.Printf("Warning: PostgreSQL ping failed at %s: %v (will operate in degraded mode)", redactDSN(dsn), err)
 		return &PostgresStore{db: db, enabled: false}, nil
 	}
 
@@ -59,11 +59,11 @@ func NewPostgresStore(dsn string, maxConns int, enabled bool) (*PostgresStore, e
 	}
 
 	if err := store.initSchema(ctx); err != nil {
-		log.Printf("[Storage] Failed to initialize PostgreSQL schema: %v", err)
+		log.Printf("Failed to initialize PostgreSQL schema: %v", err)
 		return store, err
 	}
 
-	log.Printf("[Storage] Successfully connected to PostgreSQL (MaxConns: %d)", maxConns)
+	log.Printf("Successfully connected to PostgreSQL (MaxConns: %d)", maxConns)
 	return store, nil
 }
 
@@ -133,7 +133,7 @@ func (s *PostgresStore) InsertBatch(ctx context.Context, records []models.Reques
 
 	_, err := s.db.ExecContext(ctx, stmt, valArgs...)
 	if err != nil {
-		log.Printf("[Storage] Error executing batch insert of %d records: %v", len(records), err)
+		log.Printf("Error executing batch insert of %d records: %v", len(records), err)
 		return err
 	}
 
