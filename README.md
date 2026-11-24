@@ -8,44 +8,39 @@ Built with **Go** for high-throughput gateway routing and dynamic micro-batching
 
 ## 🏛️ System Architecture
 
-```
-                       ┌────────────────────────────────────────────────────────┐
-                       │                     CLIENT TRAFFIC                     │
-                       └───────────────────────────┬────────────────────────────┘
-                                                   │
-                                                   ▼
-                                 ┌───────────────────────────────────┐
-                                 │   Kubernetes Ingress (TLS / SSE)  │
-                                 └─────────────────┬─────────────────┘
-                                                   │
-           ┌───────────────────────────────────────┴───────────────────────────────────────┐
-           │                                                                               │
-           ▼                                                                               ▼
-┌──────────────────────────────────────┐                                 ┌──────────────────────────────────────┐
-│  Go Gateway (Canary Pod)             │                                 │  Go Gateway (Stable Pods)            │
-│  - Metrics & Recovery Middleware     │                                 │  - Metrics & Recovery Middleware     │
-│  - Dynamic Micro-Batching Engine     │                                 │  - Dynamic Micro-Batching Engine     │
-│  - SSE Streaming Demultiplexer       │                                 │  - SSE Streaming Demultiplexer       │
-└──────────┬───────────────────────────┘                                 └──────────┬───────────────────────────┘
-           │                                                                        │
-           ├───────────────────────────────────────┬────────────────────────────────┤
-           ▼                                       ▼                                ▼
-┌──────────────────────┐               ┌──────────────────────┐        ┌────────────────────────┐
-│     Redis Cache      │               │ Dynamic Batch Queue  │        │ Async Audit Buffer     │
-│  Exact Prompt Hash   │               │ Window: 20ms / N=32  │        │ Non-blocking Channel   │
-│  <2ms Cache Hit Path │               └──────────┬───────────┘        └───────────┬────────────┘
-└──────────────────────┘                          │                                │
-                                                  ▼                                ▼
-                                       ┌──────────────────────┐        ┌────────────────────────┐
-                                       │ Quantized Workers    │        │ PostgreSQL Storage     │
-                                       │ vLLM / llama.cpp     │        │ Token accounting,      │
-                                       │ AWQ / GPTQ / GGUF    │        │ latency & audit logs   │
-                                       └──────────▲───────────┘        └────────────────────────┘
-                                                  │
-                                       ┌──────────┴───────────┐
-                                       │   KEDA Autoscaler    │
-                                       │ Queue Depth Triggers │
-                                       └──────────────────────┘
+```mermaid
+flowchart TD
+    Client["Client Traffic"] --> Ingress["Kubernetes Ingress (TLS / SSE)"]
+
+    Ingress --> Canary["Go Gateway (Canary Pod)
+- Metrics & Recovery Middleware
+- Dynamic Micro-Batching Engine
+- SSE Streaming Demultiplexer"]
+    Ingress --> Stable["Go Gateway (Stable Pods)
+- Metrics & Recovery Middleware
+- Dynamic Micro-Batching Engine
+- SSE Streaming Demultiplexer"]
+
+    Canary --> Redis["Redis Cache
+Exact Prompt Hash
+Sub-2ms Cache Hit Path"]
+    Canary --> BatchQueue["Dynamic Batch Queue
+Window: 20ms / N=32"]
+    Canary --> AuditBuffer["Async Audit Buffer
+Non-blocking Channel"]
+
+    Stable --> Redis
+    Stable --> BatchQueue
+    Stable --> AuditBuffer
+
+    BatchQueue --> Workers["Quantized Workers
+vLLM / llama.cpp
+AWQ / GPTQ / GGUF"]
+    AuditBuffer --> Postgres["PostgreSQL Storage
+Token accounting, latency & audit logs"]
+
+    KEDA["KEDA Autoscaler
+Queue Depth Triggers"] --> Workers
 ```
 
 ---
@@ -53,7 +48,7 @@ Built with **Go** for high-throughput gateway routing and dynamic micro-batching
 ## 🚀 Core Components
 
 ### 1. Go API Gateway & Dynamic Batching Engine (`cmd/gateway`, `internal/batcher`)
-* **Dynamic Request Batching**: Coalesces concurrent independent inference requests into unified tensor batches within a sliding window ($\Delta t = 20\text{ms}$ or $N = \text{max\_batch\_size}$).
+* **Dynamic Request Batching**: Coalesces concurrent independent inference requests into unified tensor batches within a sliding window ($\Delta t = 20\text{ms}$ or $`N = \text{max\_batch\_size}`$).
 * **Concurrency & Backpressure**: Protected by concurrency semaphores to prevent overwhelming GPU tensor cores.
 * **Context Pruning**: Detects disconnected client HTTP streams and prunes dead requests before worker dispatch.
 * **OpenAI-Compatible Endpoints**:
@@ -89,7 +84,7 @@ Built with **Go** for high-throughput gateway routing and dynamic micro-batching
 ### 5. ArgoCD & Argo Rollouts (`deploy/argocd`)
 * **GitOps Synchronisation**: ArgoCD `Application` monitors Git repository state and auto-reconciles drift.
 * **Canary Progressive Rollout**: Traffic weight ramps through 10% $\to$ 25% $\to$ 50% $\to$ 100%.
-* **Automated SLO Analysis & Rollback**: `AnalysisTemplate` queries Prometheus every 30s during rollouts. If the 5xx error rate exceeds $1\%$ or P99 latency exceeds $1.5\text{s}$, Argo Rollouts **aborts and rolls back to the stable replica set immediately**.
+* **Automated SLO Analysis & Rollback**: `AnalysisTemplate` queries Prometheus every 30s during rollouts. If the 5xx error rate exceeds $`1\%`$ or P99 latency exceeds $1.5\text{s}$, Argo Rollouts **aborts and rolls back to the stable replica set immediately**.
 
 ---
 
