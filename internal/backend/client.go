@@ -16,7 +16,7 @@ import (
 	"serv/internal/models"
 )
 
-// Client communicates with the quantized LLM backend (vLLM, llama.cpp, or mock worker).
+// Client communicates with the quantized LLM backend (vLLM or llama.cpp).
 type Client struct {
 	baseURL         string
 	httpClient      *http.Client

@@ -1,7 +1,6 @@
 # Binaries
 /bin/
 /gateway
-/mock_llm
 
 # OS & IDE
 .DS_Store

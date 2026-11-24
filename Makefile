@@ -11,9 +11,7 @@ build:
 	@mkdir -p $(BIN_DIR)
 	@echo "==> Building Gateway..."
 	CGO_ENABLED=0 $(GO) build -ldflags="-w -s" -o $(BIN_DIR)/gateway ./cmd/gateway
-	@echo "==> Building Mock LLM Worker..."
-	CGO_ENABLED=0 $(GO) build -ldflags="-w -s" -o $(BIN_DIR)/mock_llm ./cmd/mock_llm
-	@echo "==> Binaries built in $(BIN_DIR)/"
+	@echo "==> Binary built in $(BIN_DIR)/"
 
 test:
 	@echo "==> Running tests..."

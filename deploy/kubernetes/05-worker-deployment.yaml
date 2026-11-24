@@ -16,8 +16,12 @@ spec:
       labels:
         app: llm-worker
         tier: inference-worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
     spec:
-      # Accelerator node targeting (e.g. GPU A10G / L4 / A100 or high-performance compute)
+      # Accelerator node targeting (e.g. GPU A10G / L4 / A100)
       nodeSelector:
         node.kubernetes.io/instance-type: "g5.xlarge"
       tolerations:
@@ -25,49 +29,85 @@ spec:
           operator: "Exists"
           effect: "NoSchedule"
       containers:
-        - name: inference-worker
-          # In production, this can be vLLM: vllm/vllm-openai:latest
-          # with args: ["--model", "meta-llama/Llama-3-8B-Instruct-AWQ", "--quantization", "awq", "--max-model-len", "8192"]
-          image: ghcr.io/organization/llm-worker:v1.0.0
+        - name: vllm-openai
+          image: vllm/vllm-openai:v0.11.0
           imagePullPolicy: IfNotPresent
+          args:
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8000"
+            - "--model"
+            - "$(MODEL_NAME)"
+            - "--quantization"
+            - "awq"
+            - "--dtype"
+            - "half"
+            - "--max-model-len"
+            - "8192"
+            - "--gpu-memory-utilization"
+            - "0.90"
+            - "--enable-prefix-caching"
           ports:
             - containerPort: 8000
               name: http
           env:
-            - name: WORKER_PORT
-              value: "8000"
             - name: MODEL_NAME
-              value: "meta-llama/Llama-3-8B-Instruct-AWQ"
-            - name: QUANTIZATION_TYPE
-              value: "AWQ-4bit"
+              valueFrom:
+                configMapKeyRef:
+                  name: llm-gateway-config
+                  key: MODEL_NAME
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: llm-secrets
+                  key: HF_TOKEN
+                  optional: true
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: llm-secrets
+                  key: HF_TOKEN
+                  optional: true
           resources:
             requests:
               cpu: "4000m"
               memory: "16Gi"
-              # nvidia.com/gpu: "1"
+              nvidia.com/gpu: "1"
             limits:
               cpu: "8000m"
               memory: "32Gi"
-              # nvidia.com/gpu: "1"
+              nvidia.com/gpu: "1"
           volumeMounts:
             - mountPath: /dev/shm
               name: dshm
+            - mountPath: /root/.cache/huggingface
+              name: hf-cache
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: /health
               port: 8000
-            initialDelaySeconds: 30
             periodSeconds: 15
             timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /health
               port: 8000
-            initialDelaySeconds: 15
-            periodSeconds: 5
-            timeoutSeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
       volumes:
         - name: dshm
           emptyDir:
             medium: Memory
-            sizeLimit: 4Gi
+            sizeLimit: 8Gi
+        - name: hf-cache
+          emptyDir: {}

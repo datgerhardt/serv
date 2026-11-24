@@ -32,22 +32,46 @@ services:
         condition: service_healthy
 
   llm-worker:
-    build:
-      context: ..
-      dockerfile: deploy/docker/Dockerfile.mock_llm
-    container_name: llm-quantized-worker
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.11.0}
+    container_name: llm-vllm-worker
     restart: unless-stopped
+    ipc: host
     ports:
       - "8000:8000"
     environment:
-      - WORKER_PORT=8000
-      - MODEL_NAME=meta-llama/Llama-3-8B-Instruct-AWQ
-      - QUANTIZATION_TYPE=AWQ-4bit
+      - HF_TOKEN=${HF_TOKEN:-}
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    command:
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--model"
+      - "${MODEL_NAME:-meta-llama/Llama-3-8B-Instruct-AWQ}"
+      - "--quantization"
+      - "awq"
+      - "--dtype"
+      - "half"
+      - "--max-model-len"
+      - "8192"
+      - "--gpu-memory-utilization"
+      - "0.90"
+      - "--enable-prefix-caching"
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/healthz"]
-      interval: 5s
-      timeout: 2s
-      retries: 3
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 180s
 
   redis:
     image: redis:7-alpine
@@ -94,3 +118,4 @@ services:
 
 volumes:
   pgdata:
+  hf_cache:

@@ -98,8 +98,7 @@ Built with **Go** for high-throughput gateway routing and dynamic micro-batching
 ```
 .
 ├── cmd/
-│   ├── gateway/            # Go Gateway entrypoint
-│   └── mock_llm/           # Quantized worker simulation (AWQ/GGUF emulation)
+│   └── gateway/            # Go Gateway entrypoint
 ├── internal/
 │   ├── backend/            # Backend client & batch wire protocol
 │   ├── batcher/            # Dynamic micro-batching engine
@@ -108,14 +107,15 @@ Built with **Go** for high-throughput gateway routing and dynamic micro-batching
 │   ├── gateway/            # HTTP handlers, SSE streaming & middleware
 │   ├── metrics/            # Prometheus metrics registry
 │   ├── models/             # OpenAI-compatible domain models
+│   ├── ratelimit/          # Distributed Redis & in-memory rate limiter
 │   └── storage/            # PostgreSQL connection pool & async buffer
 ├── deploy/
 │   ├── argocd/             # ArgoCD Application, Rollout CRD & AnalysisTemplate
-│   ├── docker/             # Production multi-stage Dockerfiles
-│   ├── kubernetes/         # K8s Deployments, Services, HPA, KEDA & Ingress
+│   ├── docker/             # Production multi-stage Gateway Dockerfile
+│   ├── kubernetes/         # K8s Deployments (Gateway & vLLM), Services, HPA, KEDA & Ingress
 │   ├── postgres/           # Database schema migrations & views
 │   ├── prometheus/         # Prometheus scraper configuration
-│   └── docker-compose.yml  # Local multi-container test stack
+│   └── docker-compose.yml  # Full production stack (Gateway, vLLM, Redis, Postgres, Prometheus)
 ├── scripts/
 │   ├── benchmark.sh        # Dynamic batching & cache load test
 │   └── test_stream.py      # Real-time SSE token stream verification
@@ -125,17 +125,20 @@ Built with **Go** for high-throughput gateway routing and dynamic micro-batching
 
 ---
 
-## ⚡ Quickstart (Local Docker Compose)
+## ⚡ Quickstart (Docker Compose + vLLM)
 
-The repository includes a self-contained local stack running the Go Gateway, a Quantized LLM Worker simulator, Redis, PostgreSQL, and Prometheus.
+The repository includes a production-grade Docker Compose stack running the Go Gateway, **vLLM (`vllm/vllm-openai`)** on NVIDIA GPU, Redis, PostgreSQL, and Prometheus.
+
+> [!IMPORTANT]
+> Running the `llm-worker` service locally requires an NVIDIA GPU with the NVIDIA Container Toolkit installed. Set `HF_TOKEN` when serving gated Hugging Face models (such as Meta Llama).
 
 ### 1. Build and Run
 ```bash
-# Build Go binaries and run tests
+# Build Go gateway binary and run tests
 make test build
 
-# Start the complete local environment
-make up
+# Start the complete stack (export HF_TOKEN if using a gated model)
+HF_TOKEN=your_hf_token make up
 ```
 
 ### 2. Verify Services
@@ -147,10 +150,10 @@ docker compose -f deploy/docker-compose.yml ps
 | Service | Port | Description |
 |---|---|---|
 | **Gateway** | `http://localhost:8080` | High-throughput Go LLM Gateway |
-| **Worker** | `http://localhost:8000` | Quantized Model Inference Engine |
+| **vLLM Worker** | `http://localhost:8000` | Production vLLM OpenAI-compatible GPU inference server |
 | **Redis** | `localhost:6379` | In-memory prompt cache |
 | **PostgreSQL** | `localhost:5432` | Metadata & audit log store |
-| **Prometheus** | `http://localhost:9090` | Telemetry & metrics dashboard |
+| **Prometheus** | `http://localhost:9090` | Telemetry & metrics dashboard (Gateway + vLLM) |
 
 ---
 
