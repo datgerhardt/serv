@@ -48,7 +48,7 @@ Queue Depth Triggers"] --> Workers
 ## 🚀 Core Components
 
 ### 1. Go API Gateway & Dynamic Batching Engine (`cmd/gateway`, `internal/batcher`)
-* **Dynamic Request Batching**: Coalesces concurrent independent inference requests into unified tensor batches within a sliding window ($\Delta t = 20\text{ms}$ or $N = \text{max\_batch\_size}$).
+* **Dynamic Request Batching**: Coalesces concurrent independent inference requests into unified tensor batches within a sliding window ($\Delta t = 20\text{ms}$ or $`N = \text{max\_batch\_size}`$).
 * **Concurrency & Backpressure**: Protected by concurrency semaphores to prevent overwhelming GPU tensor cores.
 * **Context Pruning**: Detects disconnected client HTTP streams and prunes dead requests before worker dispatch.
 * **OpenAI-Compatible Endpoints**:
@@ -84,7 +84,7 @@ Queue Depth Triggers"] --> Workers
 ### 5. ArgoCD & Argo Rollouts (`deploy/argocd`)
 * **GitOps Synchronisation**: ArgoCD `Application` monitors Git repository state and auto-reconciles drift.
 * **Canary Progressive Rollout**: Traffic weight ramps through 10% $\to$ 25% $\to$ 50% $\to$ 100%.
-* **Automated SLO Analysis & Rollback**: `AnalysisTemplate` queries Prometheus every 30s during rollouts. If the 5xx error rate exceeds $1\%$ or P99 latency exceeds $1.5\text{s}$, Argo Rollouts **aborts and rolls back to the stable replica set immediately**.
+* **Automated SLO Analysis & Rollback**: `AnalysisTemplate` queries Prometheus every 30s during rollouts. If the 5xx error rate exceeds $`1\%`$ or P99 latency exceeds $1.5\text{s}$, Argo Rollouts **aborts and rolls back to the stable replica set immediately**.
 
 ---
 
