@@ -18,9 +18,7 @@ import (
 )
 
 func main() {
-	log.Println("==================================================")
-	log.Println("  Quantized LLM High-Scale Serving Gateway")
-	log.Println("==================================================")
+	log.Println("Starting Quantized LLM High-Scale Serving Gateway")
 
 	cfg := config.LoadFromEnv()
 
@@ -33,7 +31,7 @@ func main() {
 		cfg.CacheEnabled,
 	)
 	if err != nil {
-		log.Printf("[Main] Redis init warning: %v", err)
+		log.Printf("Redis init warning: %v", err)
 	}
 	defer redisCache.Close()
 
@@ -44,7 +42,7 @@ func main() {
 		cfg.RateLimitEnabled,
 	)
 	defer rateLimiter.Close()
-	log.Printf("[Main] Rate limiter initialized (Enabled: %v, RPM: %d)", cfg.RateLimitEnabled, cfg.RateLimitRPM)
+	log.Printf("Rate limiter initialized (Enabled: %v, RPM: %d)", cfg.RateLimitEnabled, cfg.RateLimitRPM)
 
 	// 3. Initialize PostgreSQL Storage & Async Audit Writer
 	pgStore, err := storage.NewPostgresStore(
@@ -53,7 +51,7 @@ func main() {
 		cfg.AuditLoggingEnabled,
 	)
 	if err != nil {
-		log.Printf("[Main] Postgres init warning: %v", err)
+		log.Printf("Postgres init warning: %v", err)
 	}
 	defer pgStore.Close()
 
@@ -93,7 +91,7 @@ func main() {
 	// 5. Start Server in Goroutine
 	go func() {
 		if err := srv.Start(); err != nil {
-			log.Fatalf("[Main] Server startup error: %v", err)
+			log.Fatalf("Server startup error: %v", err)
 		}
 	}()
 
@@ -102,14 +100,14 @@ func main() {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	<-sigChan
 
-	log.Println("[Main] Termination signal received. Commencing graceful shutdown...")
+	log.Println("Termination signal received. Commencing graceful shutdown...")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("[Main] Error during HTTP server shutdown: %v", err)
+		log.Printf("Error during HTTP server shutdown: %v", err)
 	}
 
-	log.Println("[Main] Gateway cleanly stopped. Exiting.")
+	log.Println("Gateway cleanly stopped. Exiting.")
 }

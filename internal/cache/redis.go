@@ -32,7 +32,7 @@ type RedisCache struct {
 // NewRedisCache initializes a connection to Redis with validation.
 func NewRedisCache(addr, password string, db int, ttl time.Duration, enabled bool) (*RedisCache, error) {
 	if !enabled {
-		log.Println("[Cache] Redis caching is disabled via configuration")
+		log.Println("Redis caching is disabled via configuration")
 		return &RedisCache{enabled: false}, nil
 	}
 
@@ -51,11 +51,11 @@ func NewRedisCache(addr, password string, db int, ttl time.Duration, enabled boo
 	defer cancel()
 
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Printf("[Cache] Warning: Could not connect to Redis at %s: %v (Cache fallback to bypass)", addr, err)
+		log.Printf("Warning: Could not connect to Redis at %s: %v (Cache fallback to bypass)", addr, err)
 		return &RedisCache{client: rdb, ttl: ttl, enabled: false}, nil
 	}
 
-	log.Printf("[Cache] Successfully connected to Redis at %s (TTL: %v)", addr, ttl)
+	log.Printf("Successfully connected to Redis at %s (TTL: %v)", addr, ttl)
 	return &RedisCache{
 		client:  rdb,
 		ttl:     ttl,
@@ -100,14 +100,14 @@ func (c *RedisCache) Get(ctx context.Context, req *models.ChatCompletionRequest)
 		return nil, false, nil
 	} else if err != nil {
 		// Log redis error without failing user request
-		log.Printf("[Cache] Redis GET error: %v", err)
+		log.Printf("Redis GET error: %v", err)
 		metrics.CacheMissesTotal.Inc()
 		return nil, false, err
 	}
 
 	var cachedResp models.ChatCompletionResponse
 	if err := json.Unmarshal([]byte(val), &cachedResp); err != nil {
-		log.Printf("[Cache] JSON unmarshal error for key %s: %v", key, err)
+		log.Printf("JSON unmarshal error for key %s: %v", key, err)
 		return nil, false, err
 	}
 
@@ -135,7 +135,7 @@ func (c *RedisCache) Set(ctx context.Context, req *models.ChatCompletionRequest,
 	metrics.CacheLatency.Observe(duration)
 
 	if err != nil {
-		log.Printf("[Cache] Redis SET error for key %s: %v", key, err)
+		log.Printf("Redis SET error for key %s: %v", key, err)
 		return err
 	}
 

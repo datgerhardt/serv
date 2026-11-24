@@ -258,7 +258,7 @@ func (b *DynamicBatcher) executeGroup(key batchGroupKey, validItems []*BatchItem
 	metrics.BatchProcessingDuration.Observe(duration.Seconds())
 
 	if err != nil {
-		log.Printf("[Batcher] Batch of size %d failed: %v", len(validItems), err)
+		log.Printf("Batch of size %d failed: %v", len(validItems), err)
 		for _, item := range validItems {
 			if item.Context.Err() == nil {
 				item.ResultChan <- &BatchResult{

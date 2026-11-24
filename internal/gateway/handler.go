@@ -125,7 +125,7 @@ func (h *Handler) HandleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("X-Cache-Status", "MISS")
 	resp, err := h.batcher.Submit(r.Context(), &req)
 	if err != nil {
-		log.Printf("[Handler] Batch inference error for %s: %v", reqID, err)
+		log.Printf("Batch inference error for %s: %v", reqID, err)
 		h.auditWriter.Enqueue(models.RequestMetadata{
 			RequestID:    reqID,
 			Model:        req.Model,
@@ -213,7 +213,7 @@ func (h *Handler) handleStreamingChat(
 	})
 
 	if err != nil {
-		log.Printf("[Handler] Streaming error for %s: %v", reqID, err)
+		log.Printf("Streaming error for %s: %v", reqID, err)
 		h.auditWriter.Enqueue(models.RequestMetadata{
 			RequestID:    reqID,
 			Model:        req.Model,
